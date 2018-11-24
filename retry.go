@@ -54,6 +54,13 @@ func New() *Client {
 	}
 }
 
+// NewWithClient return a new retry client which use the given http.Client
+func NewWithClient(c *http.Client) *Client {
+	return &Client{
+		c: c,
+	}
+}
+
 // Do execute the given request with default backoff policy and default retry func
 func (c *Client) Do(r *http.Request) (*http.Response, error) {
 	return c.DoWithBackOff(r, DefaultBackOff())
