@@ -92,7 +92,7 @@ func (c *Client) DoWithRetryFunc(r *http.Request, b BackOff, f Func) (*http.Resp
 			return err
 		}
 		response.Store(responseKey, rs)
-		if DefaultRetryFunc(rs) {
+		if f(rs) {
 			logrus.Errorf("got response from server: %+v, a retry is needed", rs)
 			return errors.New("need retry")
 		}
