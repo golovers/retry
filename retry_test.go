@@ -19,7 +19,6 @@ func TestRetryFailed(t *testing.T) {
 		http.Error(w, "server error", http.StatusInternalServerError)
 	}))
 	defer ts.Close()
-	retry.Log = true
 	c := retry.New()
 	req, err := http.NewRequest(http.MethodGet, ts.URL, nil)
 	if err != nil {
@@ -49,7 +48,6 @@ func TestRetrySuccessAtSecondTime(t *testing.T) {
 		w.Write([]byte("ok"))
 	}))
 	defer ts.Close()
-	retry.Log = true
 	c := retry.New()
 	req, err := http.NewRequest(http.MethodGet, ts.URL, nil)
 	if err != nil {

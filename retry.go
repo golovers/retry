@@ -14,10 +14,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// DefaultRetryFunc retry when the response status code is in range of 500
-// but not 501 which is http.StatusNotImplemented
-var DefaultRetryFunc = defaultRetryFunc
-
 // DefaultMaxRetry is default max retry times
 const DefaultMaxRetry uint64 = 10
 
@@ -27,14 +23,18 @@ type BackOff = backoff.BackOff
 // Func is a function to determine if a retry is needed base on the http.Response
 type Func = func(*http.Response) bool
 
-// Log is a flag to enable logging, it's enabled by default
-var Log = true
-
 var responseKey = "response"
+
+// Logger is log interface that is used by the retry client
+type Logger interface {
+	Errorf(format string, v ...interface{})
+	Infof(format string, v ...interface{})
+}
 
 // Client is a http retry client
 type Client struct {
-	c *http.Client
+	c      *http.Client
+	logger Logger
 }
 
 // New return a new default retry client
@@ -51,6 +51,7 @@ func New() *Client {
 			},
 			Timeout: 30 * time.Second,
 		},
+		logger: logrus.NewEntry(logrus.New()),
 	}
 }
 
@@ -59,6 +60,12 @@ func NewWithClient(c *http.Client) *Client {
 	return &Client{
 		c: c,
 	}
+}
+
+// WithLogger ask the client to usse the given logger instead of default logger (logrus)
+func (c *Client) WithLogger(logger Logger) *Client {
+	c.logger = logger
+	return c
 }
 
 // Do execute the given request with default backoff policy and default retry func
@@ -83,7 +90,7 @@ func (c *Client) DoWithRetryFunc(r *http.Request, b BackOff, f Func) (*http.Resp
 	if r.Body != nil {
 		body, err = ioutil.ReadAll(r.Body)
 		if err != nil && err != io.EOF {
-			logrus.Errorf("error while reading the request body, given up retrying. Err: %v", err)
+			c.logger.Errorf("error while reading the request body, given up retrying. Err: %v", err)
 			return nil, backoff.Permanent(err)
 		}
 		r.Body.Close()
@@ -95,15 +102,15 @@ func (c *Client) DoWithRetryFunc(r *http.Request, b BackOff, f Func) (*http.Resp
 		}
 		rs, err := c.c.Do(r)
 		if err != nil {
-			logrus.Errorf("request error, err: %v, need a retry", err)
+			c.logger.Errorf("request error, err: %v, need a retry", err)
 			return err
 		}
 		response.Store(responseKey, rs)
 		if f(rs) {
-			logrus.Errorf("got response from server: %+v, a retry is needed", rs)
+			c.logger.Errorf("got response from server: %+v, a retry is needed", rs)
 			return errors.New("need retry")
 		}
-		logrus.Infof("executed successfully, response: %+v", rs)
+		c.logger.Infof("executed successfully, response: %+v", rs)
 		return nil
 	}
 	if err := backoff.Retry(op, b); err != nil {
@@ -129,7 +136,8 @@ func DefaultBackOff() BackOff {
 	return b
 }
 
-// defaultRetryFunc retry if the response status code is in range of 500 but not http.StatusNotImplemented.
-func defaultRetryFunc(rs *http.Response) bool {
+// DefaultRetryFunc retry when the response status code is in range of 500
+// but not 501 which is http.StatusNotImplemented
+func DefaultRetryFunc(rs *http.Response) bool {
 	return rs.StatusCode == 0 || (rs.StatusCode >= 500 && rs.StatusCode != http.StatusNotImplemented)
 }
